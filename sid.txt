@@ -1,0 +1,22 @@
+zhihao@ARTBerkeley-PC5x-7xHP-HR-HS:~/chris/precision-tracking$ source^C
+zhihao@ARTBerkeley-PC5x-7xHP-HR-HS:~/chris/precision-tracking$ docker run -it --rm ptracker:kinetic 
+root@a2c0085e5a56:/usr/src/app# source devel/setup.bash 
+root@a2c0085e5a56:/usr/src/app# rosrun precision_tracking test_tracking 
+Usage: /usr/src/app/devel/lib/precision_tracking/test_tracking tm_file gt_folder
+root@a2c0085e5a56:/usr/src/app# rosrun precision_tracking test_tracking 
+build/  devel/  src/    
+root@a2c0085e5a56:/usr/src/app# rosrun precision_tracking test_tracking gtFolder
+Usage: /usr/src/app/devel/lib/precision_tracking/test_tracking tm_file gt_folder
+root@a2c0085e5a56:/usr/src/app# rosrun precision_tracking test_tracking 
+build/  devel/  src/    
+root@a2c0085e5a56:/usr/src/app# rosrun precision_tracking test_tracking 
+build/  devel/  src/    
+root@a2c0085e5a56:/usr/src/app# rosrun precision_trac^C
+root@a2c0085e5a56:/usr/src/app# ^C
+root@a2c0085e5a56:/usr/src/app# rosrun precision_tracking test_tracking gtFolder
+
+# TO run the docker:
+docker run -it --rm ptracker:kinetic 
+
+# TO build the docker:
+docker build -f Dockerfile -t ptracker:kinetic .
