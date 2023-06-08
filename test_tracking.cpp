@@ -28,9 +28,9 @@ const double pi = boost::math::constants::pi<double>();
 
 // Structure for storing estimated velocities for each track.
 struct TrackResults {
-  int track_num;
-  std::vector<Eigen::Vector3f> estimated_velocities;
-  std::vector<bool> ignore_frame;
+  int track_num;                                   // Represents the track number or identifier
+  std::vector<Eigen::Vector3f> estimated_velocities;    // Stores the estimated velocities for each frame in the track
+  std::vector<bool> ignore_frame;                    // Indicates whether each frame should be ignored or not
 };
 
 // Get the ground-truth velocities.
@@ -206,34 +206,57 @@ void find_bad_frames(const precision_tracking::track_manager_color::TrackManager
   }
 }
 
+/**
+ * Tracks objects using the provided parameters and stores the estimated velocities for each track.
+ *
+ * @param track_manager          The TrackManagerColor instance containing the tracks to be processed.
+ * @param params                 The parameters for tracking.
+ * @param use_precision_tracker  A flag indicating whether to use the precision tracker.
+ * @param do_parallel            A flag indicating whether to perform tracking in parallel.
+ * @param velocity_estimates     A pointer to the vector for storing the estimated velocities for each track.
+ *
+ * This function tracks objects using the provided parameters and the precision tracker if specified.
+ * It iterates over all tracks, clears the tracker for each track, and then tracks each frame of the track,
+ * storing the estimated velocities in the velocity_estimates vector.
+ * The tracking process can be performed in parallel if the do_parallel flag is set to true.
+ * After tracking, it calculates and prints the mean runtime per frame.
+ */
 void track(
-           const precision_tracking::track_manager_color::TrackManagerColor& track_manager,
-           const precision_tracking::Params& params,
-           const bool use_precision_tracker,
-           const bool do_parallel,
-           std::vector<TrackResults>* velocity_estimates) {
-  const std::vector< boost::shared_ptr<precision_tracking::track_manager_color::Track> >& tracks =
+    const precision_tracking::track_manager_color::TrackManagerColor& track_manager,
+    const precision_tracking::Params& params,
+    const bool use_precision_tracker,
+    const bool do_parallel,
+    std::vector<TrackResults>* velocity_estimates) {
+
+  // Get the tracks from the track_manager.
+  const std::vector<boost::shared_ptr<precision_tracking::track_manager_color::Track>>& tracks =
       track_manager.tracks_;
 
+  // Calculate the total number of frames in all tracks.
   int total_num_frames = 0;
   for (size_t i = 0; i < tracks.size(); ++i) {
     total_num_frames += tracks[i]->frames_.size();
   }
 
+  // Determine the number of threads based on the do_parallel flag.
   const int num_threads = do_parallel ? 8 : 1;
 
+  // Create a vector of trackers based on the number of threads.
   std::vector<precision_tracking::Tracker> trackers;
   for (int i = 0; i < num_threads; ++i) {
     precision_tracking::Tracker tracker(&params);
     if (use_precision_tracker) {
+      // Set the precision tracker if use_precision_tracker is true.
       tracker.setPrecisionTracker(
           boost::make_shared<precision_tracking::PrecisionTracker>(&params));
     }
     trackers.push_back(tracker);
   }
 
+  // Resize the velocity_estimates vector to match the number of tracks.
   velocity_estimates->resize(tracks.size());
 
+  // Create a high-resolution timer for tracking runtime measurement.
   std::ostringstream hrt_title_stream;
   hrt_title_stream << "Total time for tracking " << tracks.size() << " objects";
   precision_tracking::HighResTimer hrt(hrt_title_stream.str(),
@@ -245,17 +268,18 @@ void track(
   #pragma omp parallel for num_threads(num_threads)
   for (int i = 0; i < tracks.size(); ++i) {
 
+    // Get the tracker for the current thread.
     precision_tracking::Tracker& tracker = trackers[omp_get_thread_num()];
 
     // Reset the tracker for this new track.
     tracker.clear();
 
-    // Extract frames.
+    // Extract frames for the current track.
     const boost::shared_ptr<precision_tracking::track_manager_color::Track>& track = tracks[i];
-    const std::vector< boost::shared_ptr<precision_tracking::track_manager_color::Frame> > frames =
+    const std::vector<boost::shared_ptr<precision_tracking::track_manager_color::Frame>> frames =
         track->frames_;
 
-    // Structure for storing estimated velocities for this track.
+    // Create a structure for storing estimated velocities for this track.
     TrackResults track_estimates;
     track_estimates.track_num = track->track_num_;
 
@@ -263,22 +287,21 @@ void track(
     for (size_t j = 0; j < frames.size(); ++j) {
       const boost::shared_ptr<precision_tracking::track_manager_color::Frame> frame = frames[j];
 
-      // Get the sensor resolution.
+      // Get the sensor resolution for the current frame's centroid.
       double sensor_horizontal_resolution;
       double sensor_vertical_resolution;
       precision_tracking::getSensorResolution(
-            frame->getCentroid(), &sensor_horizontal_resolution,
-            &sensor_vertical_resolution);
+          frame->getCentroid(), &sensor_horizontal_resolution,
+          &sensor_vertical_resolution);
 
-      // Track object.
+      // Track the object using the current frame's cloud, timestamp, and sensor resolution.
       Eigen::Vector3f estimated_velocity;
       tracker.addPoints(frame->cloud_, frame->timestamp_,
-                         sensor_horizontal_resolution,
-                         sensor_vertical_resolution,
-                         &estimated_velocity);
+                        sensor_horizontal_resolution,
+                        sensor_vertical_resolution,
+                        &estimated_velocity);
 
-      // The first time we see this object, we don't have a velocity yet.
-      // After the first time, save the estimated velocity.
+      // Save the estimated velocity after the first frame (j > 0).
       if (j > 0) {
         track_estimates.estimated_velocities.push_back(estimated_velocity);
 
@@ -286,12 +309,16 @@ void track(
         track_estimates.ignore_frame.push_back(false);
       }
     }
+
+    // Store the track estimates in the velocity_estimates vector.
     (*velocity_estimates)[i] = track_estimates;
   }
 
+  // Stop the timer and print the elapsed time.
   hrt.stop();
   hrt.print();
 
+  // Calculate and print the mean runtime per frame.
   const double ms = hrt.getMilliseconds();
   printf("Mean runtime per frame: %lf ms\n", ms / total_num_frames);
 }
@@ -329,6 +356,17 @@ void testKalman(const precision_tracking::track_manager_color::TrackManagerColor
   trackAndEvaluate(track_manager, gt_folder, params, false, false);
 }
 
+/**
+ * Performs object tracking using the precision tracker in 2D (single-threaded).
+ *
+ * @param track_manager A reference to the track manager containing the tracks to be processed and tracked.
+ * @param gt_folder     The path to the folder containing the ground-truth data for evaluation.
+ *
+ * This function tracks objects using the precision tracker in 2D, which is known for its accuracy and fairly fast performance.
+ * Compared to the full 3D version, this method uses much less memory and is much faster, but it may be slightly less accurate.
+ * The function sets up the necessary parameters, invokes the tracking and evaluation process, and displays a progress message.
+ * Please note that this function assumes a single-threaded execution.
+ */
 void testPrecisionTracker2D(
     const precision_tracking::track_manager_color::TrackManagerColor& track_manager,
     const string gt_folder) {
